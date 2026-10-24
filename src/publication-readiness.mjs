@@ -40,7 +40,7 @@ export function assessResearchPublicationReadiness({manifest,artifactReceipts=[]
 export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=null,independentReceipt=null,registrationReceipt=null}={}){
  const failures=[];
  const required=(name,ok)=>{if(!ok)failures.push(name);return ok};
- const timed=x=>has(x)&&Number.isFinite(Date.parse(x));
+ const timed=x=>has(x)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u.test(x)&&Number.isFinite(Date.parse(x));
  const digested=x=>typeof x==="string"&&hash.test(x);
  const list=x=>Array.isArray(x)&&x.length>0&&x.every(has)&&new Set(x).size===x.length;
  const result=(status,flags,more={})=>Object.freeze({kind:"open-science-simulation-evidence/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...more,limit:"Checks supplied records for source, chronology and receipt consistency only. No provider authentication, simulation execution, scientific inference, rights clearance, external preregistration, or public release is performed."});
@@ -77,15 +77,17 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const prospective=!!(planFrozen&&runRecorded&&Date.parse(protocolFreeze.observedAt)<=Date.parse(runObj.startedAt)&&Date.parse(analysisFreeze.observedAt)<=Date.parse(runObj.startedAt));
  const controlRows=Array.isArray(runObj?.controls)?runObj.controls:[];
  const controlsComplete=runRecorded&&list(design.negativeControls)&&design.negativeControls.every(id=>controlRows.filter(r=>r?.id===id&&["passed","failed","unassayed"].includes(r.disposition)&&digested(r.traceSha256)).length===1)&&controlRows.length===design.negativeControls.length;
- const controlsPassed=!!(controlsComplete&&controlRows.every(r=>r.disposition==="passed"));
+ const controlsAssayed=!!(controlsComplete&&controlRows.every(r=>r.disposition!=="unassayed"));
+ const controlsPassed=!!(controlsAssayed&&controlRows.every(r=>r.disposition==="passed"));
  const independentReplay=!!(prospective&&controlsPassed&&isObj(independentReceipt)&&independentReceipt.verified===true&&has(independentReceipt.receiver)&&independentReceipt.receiver!==runObj.producer&&independentReceipt.runId===runObj.runId&&independentReceipt.traceSha256===runObj.traceSha256&&independentReceipt.resultsSha256===runObj.resultsSha256&&independentReceipt.protocolSha256===protocol.sha256&&independentReceipt.analysisSha256===analysis.sha256&&independentReceipt.replayOutcome==="matched"&&Number.isSafeInteger(independentReceipt.replayedUnits)&&independentReceipt.replayedUnits>0&&independentReceipt.controlsReviewed===true&&timed(independentReceipt.observedAt)&&Date.parse(independentReceipt.observedAt)>=Date.parse(runObj.completedAt));
- const externalRegistration=!!(planFrozen&&isObj(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runRecorded||Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt)));
+ const externalRegistration=!!(planFrozen&&isObj(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt))));
  if(designQualified&&!planFrozen)failures.push("independent-protocol-and-analysis-freeze-receipts");
  if(designQualified&&run!==null&&!runRecorded)failures.push("run-provenance-denominator-or-treatment-coverage");
  if(planFrozen&&runRecorded&&!prospective)failures.push("freeze-after-run-start");
  if(runRecorded&&!controlsComplete)failures.push("missing-or-unassayed-negative-controls");
- if(controlsComplete&&!controlsPassed)failures.push("negative-control-failure");
+ if(controlsComplete&&!controlsAssayed)failures.push("negative-control-unassayed");
+ if(controlsAssayed&&!controlsPassed)failures.push("negative-control-failure");
  if(prospective&&controlsPassed&&!independentReplay)failures.push("independent-replay-not-received");
- const status=!designQualified?"invalid-plan":!planFrozen?"plan-awaits-independent-freeze":run===null?"frozen-plan-awaiting-run":!runRecorded?"run-record-incomplete":!prospective?"retrospective-run-not-confirmatory":!controlsComplete?"negative-controls-not-qualified":!controlsPassed?"failed-negative-controls":!independentReplay?"awaiting-independent-replay":"independent-replay-receipt-consistent";
+ const status=!designQualified?"invalid-plan":!planFrozen?"plan-awaits-independent-freeze":run===null?"frozen-plan-awaiting-run":!runRecorded?"run-record-incomplete":!prospective?"retrospective-run-not-confirmatory":!controlsComplete?"negative-controls-not-qualified":!controlsAssayed?"negative-controls-unassayed":!controlsPassed?"failed-negative-controls":!independentReplay?"awaiting-independent-replay":"independent-replay-receipt-consistent";
  return result(status,{designQualified,planFrozen,prospective,runRecorded,controlsPassed,independentReplay,externalRegistration},{studyId:plan.sourceWork,assignmentUnit:has(design.assignmentUnit)?design.assignmentUnit:null,assignedUnits:runRecorded?assigned:null,rightsAccess:rights.access??null});
 }

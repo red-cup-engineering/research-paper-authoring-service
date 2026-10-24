@@ -1,0 +1,34 @@
+name: Research paper authoring and manuscript supply
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'package.json'
+      - '.github/workflows/manuscript-authoring.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'package.json'
+      - '.github/workflows/manuscript-authoring.yml'
+permissions:
+  contents: read
+jobs:
+  authoring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '24'
+      - name: Admit code syntax
+        run: |
+          node --check src/research-paper-authoring.mjs
+          node --check src/manuscript-supply.mjs
+          node --check src/publication-readiness.mjs
+      - name: Test original publication refusal and multi-manuscript supply
+        run: npm test

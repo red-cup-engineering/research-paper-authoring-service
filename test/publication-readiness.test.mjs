@@ -21,7 +21,7 @@ import {assessProspectiveSimulationEvidence as assessStudy} from "../src/publica
  const HS="a".repeat(64),JS="b".repeat(64),KS="c".repeat(64),LS="d".repeat(64),MS="e".repeat(64),host="https://example.org/";
  const studyPlan=()=>({kind:"lenticule.open-science-study/v1",sourceWork:host+"work/13",scienceOwner:"Governance Science",method:"confirmatory-simulation",protocol:{url:host+"protocol.md",sha256:HS},analysisPlan:{url:host+"analysis.md",sha256:JS},design:{assignmentUnit:"colony",treatmentArms:["office","action"],estimand:"difference in false authority admission",primaryOutcome:"accepted useful Work",rivalHypothesis:"office coordination is faster",assignmentRule:"randomized entire colonies",missingnessRule:"complete count of failures",stopRule:"fixed count per cell",negativeControls:["no-coupling","spoofed-mandate"]},rights:{access:"metadata-only",authority:"Science rights review",rationale:"protect trace contents"}});
  const frozen=()=>[{kind:"study-protocol",sha256:HS,verified:true,observedAt:"2026-10-23T17:00:00Z"},{kind:"analysis-plan",sha256:JS,verified:true,observedAt:"2026-10-23T17:00:00Z"}];
- const run=()=>({runId:"study-run-1",producer:"actor:a",softwareRevision:"commit-123",startedAt:"2026-10-23T18:00:00Z",completedAt:"2026-10-23T19:00:00Z",protocolSha256:HS,analysisSha256:JS,traceSha256:KS,resultsSha256:LS,dataSha256:MS,codeSha256:HS,counts:{assignedUnits:8,completedUnits:6,failedUnits:1,abortedUnits:1},allocatedArms:{office:4,action:4},controls:[{id:"no-coupling",disposition:"passed",traceSha256:KS},{id:"spoofed-mandate",disposition:"passed",traceSha256:LS}]});
+ const run=()=>({runId:"study-run-1",producer:"actor:a",softwareRevision:"commit-123",startedAt:"2026-10-23T18:00:00Z",completedAt:"2026-10-23T19:00:00Z",protocolSha256:HS,analysisSha256:JS,traceSha256:KS,resultsSha256:LS,dataSha256:MS,codeSha256:HS,counts:{assignedUnits:8,completedUnits:6,failedUnits:1,abortedUnits:1},allocatedArms:{office:4,action:4},dispositionByArm:{office:{assignedUnits:4,completedUnits:4,failedUnits:0,abortedUnits:0},action:{assignedUnits:4,completedUnits:2,failedUnits:1,abortedUnits:1}},controls:[{id:"no-coupling",disposition:"passed",traceSha256:KS},{id:"spoofed-mandate",disposition:"passed",traceSha256:LS}]});
  const receive=()=>({verified:true,receiver:"actor:independent",runId:"study-run-1",traceSha256:KS,resultsSha256:LS,protocolSha256:HS,analysisSha256:JS,replayOutcome:"matched",replayedUnits:4,controlsReviewed:true,observedAt:"2026-10-23T20:00:00Z"});
  const ready=()=>({plan:studyPlan(),freezeReceipts:frozen(),run:run(),independentReceipt:receive()});
  test("open-science: rejects missing study plan",()=>assert.equal(assessStudy().status,"invalid-plan"));
@@ -41,5 +41,44 @@ import {assessProspectiveSimulationEvidence as assessStudy} from "../src/publica
  test("open-science: duplicate treatment identities are not a valid design",()=>{const v=ready();v.plan.design.treatmentArms=["office","office"];assert.equal(assessStudy(v).status,"invalid-plan")});
  test("open-science: unassayed control is distinct from failed control",()=>{const v=ready();v.run.controls[0].disposition="unassayed";assert.equal(assessStudy(v).status,"negative-controls-unassayed")});
  test("open-science: non-offset/natural-language timestamps are refused",()=>{const v=ready();v.freezeReceipts[0].observedAt="October 23, 2026";assert.equal(assessStudy(v).flags.planFrozen,false)});
+ test("open-science: aggregate trial totals without arm dispositions refuse a run",()=>{
+   const v=ready();delete v.run.dispositionByArm;const x=assessStudy(v);
+   assert.equal(x.status,"run-record-incomplete");assert.equal(x.flags.denominatorReconciled,false);
+   assert.ok(x.failures.includes("per-arm-disposition-missing-or-inconsistent"));
+ });
+ test("open-science: incomplete treatment-arm trial denominator refuses confirmation",()=>{
+   const v=ready();v.run.dispositionByArm.action.completedUnits=3;const x=assessStudy(v);
+   assert.equal(x.status,"run-record-incomplete");assert.equal(x.flags.runRecorded,false);
+ });
+ test("open-science: per-arm missingness cannot be masked by matching global totals",()=>{
+   const v=ready();v.run.dispositionByArm.office.failedUnits=1;
+   v.run.dispositionByArm.action.failedUnits=0;
+   assert.equal(assessStudy(v).status,"run-record-incomplete");
+ });
+ test("open-science: extra unregistered arm is refused",()=>{
+   const v=ready();v.run.dispositionByArm.unregistered={assignedUnits:0,completedUnits:0,failedUnits:0,abortedUnits:0};
+   assert.equal(assessStudy(v).flags.runRecorded,false);
+ });
+ test("open-science: an arm with no surviving completions remains visible, not dropped",()=>{
+   const v=ready();
+   v.run.dispositionByArm.action={assignedUnits:4,completedUnits:0,failedUnits:3,abortedUnits:1};
+   v.run.counts={assignedUnits:8,completedUnits:4,failedUnits:3,abortedUnits:1};
+   const x=assessStudy(v);
+   assert.equal(x.flags.runRecorded,true);
+   assert.equal(x.reportedDispositionByArm.action.completedUnits,0);
+   assert.equal(x.reportedDispositionByArm.office.completedUnits,4);
+ });
+ test("open-science: first-class arm accounting does not itself certify inference",()=>{
+   const x=assessStudy(ready());
+   assert.equal(x.flags.denominatorReconciled,true);
+   assert.equal(x.reportedDispositionByArm.action.failedUnits,1);
+   assert.equal(x.limit.includes("scientific inference"),true);
+ });
+ test("open-science: arm accounting cannot inherit a forged prototype arm",()=>{
+   const v=ready();v.plan.design.treatmentArms=["office","__proto__"];
+   v.run.allocatedArms={office:4,action:4};
+   assert.equal(assessStudy(v).flags.runRecorded,false);
+ });
+
 
 }

@@ -39,4 +39,7 @@ import {assessProspectiveSimulationEvidence as assessStudy} from "../src/publica
  test("open-science: protected data may have honest metadata-only accessibility",()=>assert.equal(assessStudy(ready()).rightsAccess,"metadata-only"));
  test("open-science: never manufacture a run from manuscript-only input",()=>{const v=ready();v.run=null;assert.equal(assessStudy(v).status,"frozen-plan-awaiting-run")});
  test("open-science: duplicate treatment identities are not a valid design",()=>{const v=ready();v.plan.design.treatmentArms=["office","office"];assert.equal(assessStudy(v).status,"invalid-plan")});
+ test("open-science: unassayed control is distinct from failed control",()=>{const v=ready();v.run.controls[0].disposition="unassayed";assert.equal(assessStudy(v).status,"negative-controls-unassayed")});
+ test("open-science: non-offset/natural-language timestamps are refused",()=>{const v=ready();v.freezeReceipts[0].observedAt="October 23, 2026";assert.equal(assessStudy(v).flags.planFrozen,false)});
+
 }

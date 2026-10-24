@@ -61,8 +61,8 @@ export function planResearchManuscriptSupply({ papers = [], windows = [] } = {})
     const claimStatus = text(research.claimStatus, "declared research claim status");
     const evidenceRefs = refs(research.evidenceRefs, "evidence references");
     const comparisonRefs = refs(research.comparisonRefs, "prior/comparator references");
-    if (new Set([...evidenceRefs, ...comparisonRefs]).size === 0)
-      throw new TypeError("a paper needs distinct evidentiary context");
+    if (comparisonRefs.every(ref => evidenceRefs.includes(ref)))
+      throw new TypeError("a paper must distinguish its research evidence from comparison or prior work");
     const plan = planResearchPaperDraft(draft);
     const id = plan.frontmatter.id;
     if (seenIds.has(id)) throw new TypeError(`duplicate manuscript identity: ${id}`);

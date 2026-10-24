@@ -16,6 +16,51 @@ export const researchPaperStructure = freeze([
   freeze({ id: "measurement", heading: "Measurement", markerVariants: freeze(["measurement", "appendix: measurement"]) }),
 ]);
 
+/** Different fields demand different paper forms. The formal profile is the original default. */
+const paperProfiles = freeze({
+  formal: researchPaperStructure,
+  empirical: freeze([
+    freeze({ id: "abstract", heading: "Abstract", markerVariants: freeze(["abstract"]) }),
+    freeze({ id: "question", heading: "Research Question and Prior Work", markerVariants: freeze(["research question", "prior work"]) }),
+    freeze({ id: "methods", heading: "Methods and Controls", markerVariants: freeze(["methods", "study design"]) }),
+    freeze({ id: "results", heading: "Results and Uncertainty", markerVariants: freeze(["results", "observations"]) }),
+    freeze({ id: "counterevidence", heading: "Alternative Explanations and Negative Cases", markerVariants: freeze(["alternative explanations", "negative cases", "counterevidence"]) }),
+    freeze({ id: "limitations", heading: "Limitations and Reproducibility", markerVariants: freeze(["limitations", "reproducibility"]) }),
+  ]),
+  interpretive: freeze([
+    freeze({ id: "abstract", heading: "Abstract", markerVariants: freeze(["abstract"]) }),
+    freeze({ id: "question", heading: "Question and Intervention", markerVariants: freeze(["question", "intervention"]) }),
+    freeze({ id: "sources", heading: "Sources, Context and Genealogy", markerVariants: freeze(["sources", "context", "genealogy"]) }),
+    freeze({ id: "argument", heading: "Interpretation and Argument", markerVariants: freeze(["interpretation", "argument"]) }),
+    freeze({ id: "counterreadings", heading: "Rival Readings and Negative Cases", markerVariants: freeze(["rival readings", "counterreadings", "negative cases"]) }),
+    freeze({ id: "limitations", heading: "Scope, Limitations and Consequences", markerVariants: freeze(["limitations", "scope"]) }),
+  ]),
+  methods: freeze([
+    freeze({ id: "abstract", heading: "Abstract", markerVariants: freeze(["abstract"]) }),
+    freeze({ id: "problem", heading: "Research Instrument Problem", markerVariants: freeze(["problem", "research instrument"]) }),
+    freeze({ id: "design", heading: "Method and Instrument Design", markerVariants: freeze(["method", "instrument design"]) }),
+    freeze({ id: "evaluation", heading: "Independent Comparison and Evaluation", markerVariants: freeze(["evaluation", "comparison"]) }),
+    freeze({ id: "refusals", heading: "Failure, Refusal and Alternative Cases", markerVariants: freeze(["failure", "refusal", "alternative"]) }),
+    freeze({ id: "reuse", heading: "Reproduction, Limits and Reuse", markerVariants: freeze(["reproduction", "limits", "reuse"]) }),
+  ]),
+});
+export const researchPaperProfiles = paperProfiles;
+function paperStructure(profile) {
+  if (typeof profile !== "string" || !Object.hasOwn(paperProfiles, profile))
+    throw new TypeError("profile must name a supported scientific paper structure");
+  return paperProfiles[profile];
+}
+function sectionText(provided, structure) {
+  if (provided === null || typeof provided !== "object" || Array.isArray(provided))
+    throw new TypeError("sectionBodies must be a record of authored text by section id");
+  const allowed = new Set(structure.map(({ id }) => id));
+  for (const [id, text] of Object.entries(provided)) {
+    if (!allowed.has(id)) throw new TypeError(`unsupported authored section ${id}`);
+    if (typeof text !== "string") throw new TypeError(`authored section ${id} must be text`);
+  }
+  return provided;
+}
+
 function date(value, name) {
   if (typeof value !== "string" || !ISO_DATE.test(value)) throw new TypeError(`${name} must be an ISO calendar date`);
   return value;
@@ -35,9 +80,20 @@ function metadata({ id, title, status = "draft", documentType = "paper", authors
 
 /** Plan one thesis-centered research paper without deciding its Markdown encoding or write location. */
 export function planResearchPaperDraft(options) {
+  const { profile = "formal", sectionBodies = {} } = options ?? {};
+  const structure = paperStructure(profile);
+  const authored = sectionText(sectionBodies, structure);
   const frontmatter = metadata(options ?? {});
-  const sections = researchPaperStructure.map(({ id, heading }) => freeze({ id, level: 2, title: heading, body: "" }));
-  return freeze({ kind: "research-paper-draft-plan/v1", frontmatter, sections: freeze(sections) });
+  // A paper can be created from existing, source-qualified scientific writing.
+  // We never generate a result, cite an unread source or call a blank outline a paper.
+  const sections = structure.map(({ id, heading }) => freeze({
+    id, level: 2, title: heading, body: authored[id] ?? "",
+  }));
+  return freeze({
+    kind: "research-paper-draft-plan/v1", frontmatter,
+    ...(profile === "formal" ? {} : { profile }),
+    sections: freeze(sections),
+  });
 }
 
 /** Attach a research-note provenance witness to a new draft plan without copying it into a second file format. */
@@ -49,7 +105,7 @@ export function planResearchPaperFromNote({ note, ...options } = {}) {
 }
 
 /** Assess a paper from canonical Markdown observations; this service never parses Markdown or performs file I/O. */
-export function assessResearchPaperStructure({ frontmatter, headings, hasTable = false } = {}) {
+export function assessResearchPaperStructure({ frontmatter, headings, hasTable = false, profile = "formal" } = {}) {
   const errors = [];
   const warnings = [];
   if (frontmatter === null || frontmatter === undefined) errors.push("Missing document frontmatter");
@@ -57,9 +113,9 @@ export function assessResearchPaperStructure({ frontmatter, headings, hasTable =
   if (!Array.isArray(headings) || headings.some((heading) => typeof heading?.title !== "string")) throw new TypeError("headings must be parsed heading records with titles");
   if (typeof hasTable !== "boolean") throw new TypeError("hasTable must be boolean");
   const headingText = headings.map(({ title }) => title.toLowerCase()).join("\n");
-  for (const requirement of researchPaperStructure.slice(1)) {
+  for (const requirement of paperStructure(profile).slice(1)) {
     if (!requirement.markerVariants.some((marker) => headingText.includes(marker))) warnings.push(`Section likely missing or unmarked: ${requirement.id}`);
   }
-  if (!hasTable) warnings.push("No demonstration table was identified");
+  if (!hasTable && (profile === "formal" || profile === "empirical")) warnings.push("No demonstration table was identified");
   return freeze({ ok: errors.length === 0, errors: freeze(errors), warnings: freeze(warnings) });
 }

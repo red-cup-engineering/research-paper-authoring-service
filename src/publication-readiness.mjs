@@ -68,12 +68,23 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const protocolFreeze=frozen("study-protocol",protocol.sha256)[0],analysisFreeze=frozen("analysis-plan",analysis.sha256)[0];
  const planFrozen=designQualified&&!!protocolFreeze&&!!analysisFreeze;
  const runObj=isObj(run)?run:null,ct=isObj(runObj?.counts)?runObj.counts:{},alloc=isObj(runObj?.allocatedArms)?runObj.allocatedArms:{};
+ const byArm=isObj(runObj?.dispositionByArm)?runObj.dispositionByArm:{};
  const number=x=>Number.isSafeInteger(x)&&x>=0;
  const assigned=ct.assignedUnits,completed=ct.completedUnits,failed=ct.failedUnits,aborted=ct.abortedUnits;
  const arms=Array.isArray(design.treatmentArms)?design.treatmentArms:[];
  const countsValid=number(assigned)&&assigned>0&&[completed,failed,aborted].every(number)&&completed+failed+aborted===assigned;
- const allocationsValid=arms.length>=2&&Object.keys(alloc).length===arms.length&&arms.every(k=>number(alloc[k])&&alloc[k]>0)&&arms.reduce((sum,k)=>sum+alloc[k],0)===assigned;
- const runRecorded=designQualified&&!!runObj&&has(runObj.runId)&&has(runObj.producer)&&has(runObj.softwareRevision)&&digested(runObj.traceSha256)&&digested(runObj.resultsSha256)&&digested(runObj.dataSha256)&&digested(runObj.codeSha256)&&runObj.protocolSha256===protocol.sha256&&runObj.analysisSha256===analysis.sha256&&timed(runObj.startedAt)&&timed(runObj.completedAt)&&Date.parse(runObj.startedAt)<Date.parse(runObj.completedAt)&&countsValid&&allocationsValid;
+ const allocationsValid=arms.length>=2&&Object.keys(alloc).length===arms.length&&arms.every(k=>Object.hasOwn(alloc,k)&&number(alloc[k])&&alloc[k]>0)&&arms.reduce((sum,k)=>sum+alloc[k],0)===assigned;
+ // An aggregate denominator can conceal systematic loss of one assigned colony arm.
+ // All counts are observations supplied by the host, not verified experiments.
+ const dispositionFields=["assignedUnits","completedUnits","failedUnits","abortedUnits"];
+ const perArmValid=!!(countsValid&&allocationsValid&&Object.keys(byArm).length===arms.length
+   &&arms.every(k=>Object.hasOwn(byArm,k)&&isObj(byArm[k])
+     &&dispositionFields.every(f=>Object.hasOwn(byArm[k],f)&&number(byArm[k][f]))
+     &&byArm[k].assignedUnits===alloc[k]
+     &&byArm[k].completedUnits+byArm[k].failedUnits+byArm[k].abortedUnits===byArm[k].assignedUnits)
+   &&dispositionFields.every(f=>arms.reduce((sum,k)=>sum+byArm[k][f],0)===ct[f]));
+ const acceptedByArm=perArmValid?Object.freeze(Object.fromEntries(arms.map(k=>[k,Object.freeze(Object.fromEntries(dispositionFields.map(field=>[field,byArm[k][field]])))]))):null;
+ const runRecorded=designQualified&&!!runObj&&has(runObj.runId)&&has(runObj.producer)&&has(runObj.softwareRevision)&&digested(runObj.traceSha256)&&digested(runObj.resultsSha256)&&digested(runObj.dataSha256)&&digested(runObj.codeSha256)&&runObj.protocolSha256===protocol.sha256&&runObj.analysisSha256===analysis.sha256&&timed(runObj.startedAt)&&timed(runObj.completedAt)&&Date.parse(runObj.startedAt)<Date.parse(runObj.completedAt)&&countsValid&&allocationsValid&&perArmValid;
  const prospective=!!(planFrozen&&runRecorded&&Date.parse(protocolFreeze.observedAt)<=Date.parse(runObj.startedAt)&&Date.parse(analysisFreeze.observedAt)<=Date.parse(runObj.startedAt));
  const controlRows=Array.isArray(runObj?.controls)?runObj.controls:[];
  const controlsComplete=runRecorded&&list(design.negativeControls)&&design.negativeControls.every(id=>controlRows.filter(r=>r?.id===id&&["passed","failed","unassayed"].includes(r.disposition)&&digested(r.traceSha256)).length===1)&&controlRows.length===design.negativeControls.length;
@@ -82,6 +93,7 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const independentReplay=!!(prospective&&controlsPassed&&isObj(independentReceipt)&&independentReceipt.verified===true&&has(independentReceipt.receiver)&&independentReceipt.receiver!==runObj.producer&&independentReceipt.runId===runObj.runId&&independentReceipt.traceSha256===runObj.traceSha256&&independentReceipt.resultsSha256===runObj.resultsSha256&&independentReceipt.protocolSha256===protocol.sha256&&independentReceipt.analysisSha256===analysis.sha256&&independentReceipt.replayOutcome==="matched"&&Number.isSafeInteger(independentReceipt.replayedUnits)&&independentReceipt.replayedUnits>0&&independentReceipt.controlsReviewed===true&&timed(independentReceipt.observedAt)&&Date.parse(independentReceipt.observedAt)>=Date.parse(runObj.completedAt));
  const externalRegistration=!!(planFrozen&&isObj(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt))));
  if(designQualified&&!planFrozen)failures.push("independent-protocol-and-analysis-freeze-receipts");
+ if(designQualified&&run!==null&&!perArmValid)failures.push("per-arm-disposition-missing-or-inconsistent");
  if(designQualified&&run!==null&&!runRecorded)failures.push("run-provenance-denominator-or-treatment-coverage");
  if(planFrozen&&runRecorded&&!prospective)failures.push("freeze-after-run-start");
  if(runRecorded&&!controlsComplete)failures.push("missing-or-unassayed-negative-controls");
@@ -89,5 +101,5 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  if(controlsAssayed&&!controlsPassed)failures.push("negative-control-failure");
  if(prospective&&controlsPassed&&!independentReplay)failures.push("independent-replay-not-received");
  const status=!designQualified?"invalid-plan":!planFrozen?"plan-awaits-independent-freeze":run===null?"frozen-plan-awaiting-run":!runRecorded?"run-record-incomplete":!prospective?"retrospective-run-not-confirmatory":!controlsComplete?"negative-controls-not-qualified":!controlsAssayed?"negative-controls-unassayed":!controlsPassed?"failed-negative-controls":!independentReplay?"awaiting-independent-replay":"independent-replay-receipt-consistent";
- return result(status,{designQualified,planFrozen,prospective,runRecorded,controlsPassed,independentReplay,externalRegistration},{studyId:plan.sourceWork,assignmentUnit:has(design.assignmentUnit)?design.assignmentUnit:null,assignedUnits:runRecorded?assigned:null,rightsAccess:rights.access??null});
+ return result(status,{designQualified,planFrozen,prospective,runRecorded,denominatorReconciled:perArmValid,controlsPassed,independentReplay,externalRegistration},{studyId:plan.sourceWork,assignmentUnit:has(design.assignmentUnit)?design.assignmentUnit:null,assignedUnits:runRecorded?assigned:null,reportedDispositionByArm:runRecorded?acceptedByArm:null,rightsAccess:rights.access??null});
 }

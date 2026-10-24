@@ -83,7 +83,7 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
      &&byArm[k].assignedUnits===alloc[k]
      &&byArm[k].completedUnits+byArm[k].failedUnits+byArm[k].abortedUnits===byArm[k].assignedUnits)
    &&dispositionFields.every(f=>arms.reduce((sum,k)=>sum+byArm[k][f],0)===ct[f]));
- const acceptedByArm=perArmValid?Object.freeze(Object.fromEntries(arms.map(k=>[k,Object.freeze({...byArm[k]})]))):null;
+ const acceptedByArm=perArmValid?Object.freeze(Object.fromEntries(arms.map(k=>[k,Object.freeze(Object.fromEntries(dispositionFields.map(field=>[field,byArm[k][field]])))]))):null;
  const runRecorded=designQualified&&!!runObj&&has(runObj.runId)&&has(runObj.producer)&&has(runObj.softwareRevision)&&digested(runObj.traceSha256)&&digested(runObj.resultsSha256)&&digested(runObj.dataSha256)&&digested(runObj.codeSha256)&&runObj.protocolSha256===protocol.sha256&&runObj.analysisSha256===analysis.sha256&&timed(runObj.startedAt)&&timed(runObj.completedAt)&&Date.parse(runObj.startedAt)<Date.parse(runObj.completedAt)&&countsValid&&allocationsValid&&perArmValid;
  const prospective=!!(planFrozen&&runRecorded&&Date.parse(protocolFreeze.observedAt)<=Date.parse(runObj.startedAt)&&Date.parse(analysisFreeze.observedAt)<=Date.parse(runObj.startedAt));
  const controlRows=Array.isArray(runObj?.controls)?runObj.controls:[];

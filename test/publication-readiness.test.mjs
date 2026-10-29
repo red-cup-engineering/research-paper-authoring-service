@@ -82,3 +82,67 @@ import {assessProspectiveSimulationEvidence as assessStudy} from "../src/publica
 
 
 }
+
+test("publication: a public observation before declared release cannot establish citability",()=>{
+ const m=published();m.released_at="2026-10-30T00:00:00Z";
+ const observed={...publicReceipt,observedAt:"2026-10-29T23:59:59Z"};
+ const result=check({manifest:m,artifactReceipts:receipt,publicReceipt:observed});
+ assert.equal(result.status,"public-claim-unreceived");assert.equal(result.releaseChronology,"pre-release-observation");
+ assert.equal(result.flags.artifactBytesVerified,true);assert.equal(result.flags.publiclyCitable,false);
+ m.doi="10.5281/zenodo.123456";
+ const doi={verified:true,doi:m.doi,version:m.version,publicUrl:U};
+ assert.equal(check({manifest:m,artifactReceipts:receipt,publicReceipt:observed,doiReceipt:doi}).flags.doiReceived,false);
+});
+test("publication: offset-equivalent release and observation instants compare correctly",()=>{
+ const m=published();m.released_at="2026-10-18T01:00:00+01:00";
+ const observed={...publicReceipt,observedAt:"2026-10-18T00:00:00Z"};
+ const result=check({manifest:m,artifactReceipts:receipt,publicReceipt:observed});
+ assert.equal(result.releaseChronology,"ordered");assert.equal(result.status,"public-release-received");
+});
+test("publication: natural-language release or observation timestamps cannot qualify a public receipt",()=>{
+ const m=published();m.released_at="October 18 2026";
+ const result=check({manifest:m,artifactReceipts:receipt,publicReceipt});
+ assert.equal(result.releaseChronology,"unqualified");assert.equal(result.flags.publiclyCitable,false);
+ m.released_at="2026-10-18T00:00:00Z";
+ assert.equal(check({manifest:m,artifactReceipts:receipt,
+ publicReceipt:{...publicReceipt,observedAt:"October 18 2026"}}).flags.releaseReceived,false);
+});
+test("publication: conflicting artifact evidence is order-independent and non-citable",()=>{
+ const bad={...receipt[0],sha256:"c".repeat(64)};
+ const output=[];
+ for(const rows of [[bad,receipt[0]],[receipt[0],bad]]){
+   const r=check({manifest:published(),artifactReceipts:rows,publicReceipt});
+   assert.equal(r.status,"metadata-ready-artifacts-unverified");
+   assert.equal(r.flags.publiclyCitable,false);
+   assert.deepEqual(r.receiptEvidence.duplicatePaths,["paper.pdf"]);
+   assert.deepEqual(r.receiptEvidence.contradictoryPaths,["paper.pdf"]);
+   assert.deepEqual(r.receiptEvidence.mismatchedPaths,["paper.pdf"]);
+   output.push(r.receiptEvidence);
+ }
+ assert.deepEqual(output[0],output[1]);
+});
+test("publication: duplicate identical receipts do not manufacture independent verification",()=>{
+ const r=check({manifest:published(),artifactReceipts:[receipt[0],{...receipt[0]}],publicReceipt});
+ assert.equal(r.flags.artifactBytesVerified,false);
+ assert.deepEqual(r.receiptEvidence.duplicatePaths,["paper.pdf"]);
+ assert.deepEqual(r.receiptEvidence.contradictoryPaths,[]);
+});
+test("publication: undeclared, malformed and absent receipts are visible as incomplete",()=>{
+ for(const rows of [[receipt[0],{path:"extra.json",sha256:H,bytes:10,verified:true}],[receipt[0],null]]){
+   const r=check({manifest:published(),artifactReceipts:rows,publicReceipt});
+   assert.equal(r.flags.releaseReceived,false);assert.equal(r.flags.artifactBytesVerified,false);
+ }
+ const absent=check({manifest:published(),artifactReceipts:[],publicReceipt});
+ assert.deepEqual(absent.receiptEvidence.missingPaths,["paper.pdf"]);
+});
+test("publication: an exact multi-artifact receipt inventory accepts either order",()=>{
+ const m=published();m.files["results.json"]={sha256:"c".repeat(64),bytes:4};
+ const results={path:"results.json",sha256:"c".repeat(64),bytes:4,verified:true};
+ for(const rows of [[results,receipt[0]],[receipt[0],results]]){
+   const r=check({manifest:m,artifactReceipts:rows,publicReceipt});
+   assert.equal(r.status,"public-release-received");
+   assert.deepEqual(r.receiptEvidence.duplicatePaths,[]);
+   assert.deepEqual(r.receiptEvidence.missingPaths,[]);
+ }
+});
+

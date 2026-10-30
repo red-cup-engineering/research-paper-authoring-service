@@ -1,12 +1,43 @@
 /** Read-only structural admission; a citation file cannot itself create a release or DOI. */
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 const isObj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x),has=x=>typeof x==="string"&&x.trim().length>0;
 const hash=/^[a-f0-9]{64}$/u,ver=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w.-]+)?$/u,doi=/^10\.\d{4,9}\/\S+$/iu;
 const https=x=>{if(!has(x))return false;try{const u=new URL(x);return u.protocol==="https:"&&!u.username&&!u.password&&!!u.hostname}catch{return false}};
-const qualifiedInstant=x=>has(x)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u.test(x)&&Number.isFinite(Date.parse(x));
+const qualifiedInstant=x=>{
+ if(!has(x))return false;
+ const m=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|([+-])(\d{2}):(\d{2}))$/u.exec(x);
+ if(!m)return false;
+ const [,y,mo,d,h,minute,second,,zoneHour,zoneMinute]=m;
+ const year=Number(y),month=Number(mo),day=Number(d);
+ const leap=year%4===0&&(year%100!==0||year%400===0);
+ const days=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
+ if(year<1||month<1||month>12||day<1||day>days[month-1]||
+    Number(h)>23||Number(minute)>59||Number(second)>59||
+    (zoneHour!==undefined&&(Number(zoneHour)>23||Number(zoneMinute)>59)))return false;
+ return Number.isFinite(Date.parse(x));
+};
+const MAX_MANIFEST_BYTES=2_000_000;
+/** Bind a receipt to the exact original UTF-8 JSON manifest bytes, not just
+ * to the receiver's unsupported 64-hex statement. Still not an authenticity
+ * claim: the caller must independently verify publication URL and signer. */
+function examineManifestBytes(manifest,manifestBytes,claimedSha256){
+ const report=(standing,sha256=null,bytes=null)=>Object.freeze({standing,sha256,bytes});
+ if(manifestBytes===null||manifestBytes===undefined)return report("missing-source-bytes");
+ if(!(manifestBytes instanceof Uint8Array)||manifestBytes.byteLength===0||
+    manifestBytes.byteLength>MAX_MANIFEST_BYTES)return report("invalid-source-bytes");
+ let decoded;
+ try{decoded=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(manifestBytes))}
+ catch{return report("invalid-source-json-or-encoding")}
+ if(!isDeepStrictEqual(decoded,manifest))return report("source-does-not-match-manifest");
+ const sha256=createHash("sha256").update(manifestBytes).digest("hex");
+ return report(hash.test(claimedSha256??"")&&sha256===claimedSha256?"bound":"receipt-digest-mismatch",
+   sha256,manifestBytes.byteLength);
+}
 const outcome=(status,failures,flags,info={})=>Object.freeze({kind:"research-paper-release-readiness/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...info,limit:"Structural and receipt consistency only; not scientific truth, rights clearance, archiving, DOI registration, public availability, or newsroom delivery."});
 /** The caller supplies independently byte-verified artifact and live-release receipts.
  * No filesystem, network, signing, DOI allocation, or publication effect occurs here. */
-export function assessResearchPublicationReadiness({manifest,artifactReceipts=[],publicReceipt=null,doiReceipt=null}={}){
+export function assessResearchPublicationReadiness({manifest,manifestBytes=null,artifactReceipts=[],publicReceipt=null,doiReceipt=null}={}){
  const missing=[],required=(k,p)=>{if(!p)missing.push(k);return p};
  if(!isObj(manifest))return outcome("invalid-candidate",["manifest-required"],{sourceReady:false,artifactBytesVerified:false,releaseReceived:false,doiReceived:false});
  required("publication-kind",["lenticule.research-publication.v1","research-publication/v1"].includes(manifest.kind));
@@ -55,16 +86,25 @@ export function assessResearchPublicationReadiness({manifest,artifactReceipts=[]
  const artifactsVerified=valid&&exactInventory&&mismatched.length===0;
  // A claimed publication cannot have been independently observed before
  // the claimed release instant, regardless of any supplied verified flags.
+ const manifestEvidence=examineManifestBytes(manifest,manifestBytes,publicReceipt?.manifestSha256);
  const releaseChronology=!isObj(publicReceipt)?"unobserved"
    :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(publicReceipt.observedAt)?"unqualified"
    :Date.parse(publicReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
  const publicFields=manifest.status==="published"&&https(manifest.canonical_public_url)&&qualifiedInstant(manifest.released_at);
  const releaseReceived=!!(artifactsVerified&&publicFields&&releaseChronology==="ordered"
+   &&manifestEvidence.standing==="bound"
    &&publicReceipt.verified===true&&publicReceipt.publicUrl===manifest.canonical_public_url
    &&publicReceipt.version===manifest.version&&hash.test(publicReceipt.manifestSha256??""));
- const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiReceipt)&&doiReceipt.verified===true&&doiReceipt.doi===manifest.doi&&doiReceipt.version===manifest.version&&doiReceipt.publicUrl===manifest.canonical_public_url);
+ const doiChronology=!isObj(doiReceipt)?"unobserved"
+   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(doiReceipt.observedAt)?"unqualified"
+   :Date.parse(doiReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
+ const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiReceipt)
+   &&doiChronology==="ordered"&&doiReceipt.verified===true
+   &&doiReceipt.doi===manifest.doi&&doiReceipt.version===manifest.version
+   &&doiReceipt.publicUrl===manifest.canonical_public_url
+   &&doiReceipt.manifestSha256===manifestEvidence.sha256);
  const status=!valid?"invalid-candidate":!artifactsVerified?"metadata-ready-artifacts-unverified":manifest.status!=="published"?"reproducible-candidate-not-public":!releaseReceived?"public-claim-unreceived":doiReceived?"doi-received":"public-release-received";
- return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null,receiptEvidence,releaseChronology});
+ return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null,receiptEvidence,manifestEvidence,releaseChronology,doiChronology});
 }
 
 /** Structural study-to-replay evidence assay. It cannot authenticate providers, execute

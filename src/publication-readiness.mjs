@@ -2,6 +2,7 @@
 const isObj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x),has=x=>typeof x==="string"&&x.trim().length>0;
 const hash=/^[a-f0-9]{64}$/u,ver=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w.-]+)?$/u,doi=/^10\.\d{4,9}\/\S+$/iu;
 const https=x=>{if(!has(x))return false;try{const u=new URL(x);return u.protocol==="https:"&&!u.username&&!u.password&&!!u.hostname}catch{return false}};
+const qualifiedInstant=x=>has(x)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u.test(x)&&Number.isFinite(Date.parse(x));
 const outcome=(status,failures,flags,info={})=>Object.freeze({kind:"research-paper-release-readiness/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...info,limit:"Structural and receipt consistency only; not scientific truth, rights clearance, archiving, DOI registration, public availability, or newsroom delivery."});
 /** The caller supplies independently byte-verified artifact and live-release receipts.
  * No filesystem, network, signing, DOI allocation, or publication effect occurs here. */
@@ -21,13 +22,49 @@ export function assessResearchPublicationReadiness({manifest,artifactReceipts=[]
  const files=isObj(manifest.files)?Object.entries(manifest.files):[];
  required("declared-artifacts",files.some(([p])=>/\.pdf$/iu.test(p))&&files.every(([p,v])=>has(p)&&!p.startsWith("/")&&!p.split("/").includes("..")&&isObj(v)&&hash.test(v.sha256??"")&&Number.isSafeInteger(v.bytes)&&v.bytes>0));
  required("source-locators",Array.isArray(manifest.source_manuscripts)&&manifest.source_manuscripts.length>0&&manifest.source_manuscripts.every(https));
- const valid=missing.length===0,byPath=new Map((Array.isArray(artifactReceipts)?artifactReceipts:[]).map(x=>[x?.path,x]));
- const artifactsVerified=valid&&files.every(([p,v])=>{const r=byPath.get(p);return r?.verified===true&&r.sha256===v.sha256&&r.bytes===v.bytes});
- const publicFields=manifest.status==="published"&&https(manifest.canonical_public_url)&&has(manifest.released_at)&&Number.isFinite(Date.parse(manifest.released_at));
- const releaseReceived=!!(artifactsVerified&&publicFields&&isObj(publicReceipt)&&publicReceipt.verified===true&&publicReceipt.publicUrl===manifest.canonical_public_url&&publicReceipt.version===manifest.version&&has(publicReceipt.observedAt)&&Number.isFinite(Date.parse(publicReceipt.observedAt))&&hash.test(publicReceipt.manifestSha256??""));
+ // All receipts are original testimony. Never discard an inconsistent receipt
+ // by Map last-write-wins or certify a publication from input ordering.
+ const valid=missing.length===0,receipts=Array.isArray(artifactReceipts)?artifactReceipts:[];
+ const byPath=new Map(),rowsByPath=new Map(),duplicates=new Set(),contradictions=new Set();
+ let malformedCount=0;
+ for(const row of receipts){
+   if(!isObj(row)||!has(row.path)){malformedCount++;continue}
+   if(!rowsByPath.has(row.path))rowsByPath.set(row.path,[]);
+   rowsByPath.get(row.path).push(row);
+   if(byPath.has(row.path)){
+     duplicates.add(row.path);
+     const earlier=byPath.get(row.path);
+     if(earlier.sha256!==row.sha256||earlier.bytes!==row.bytes||earlier.verified!==row.verified)
+       contradictions.add(row.path);
+   }else byPath.set(row.path,row);
+ }
+ const fileNames=new Set(files.map(([path])=>path));
+ const undeclared=[...byPath.keys()].filter(path=>!fileNames.has(path)).sort();
+ const missingReceipts=files.map(([path])=>path).filter(path=>!byPath.has(path)).sort();
+ const mismatched=files.filter(([path,v])=>(rowsByPath.get(path)??[])
+   .some(row=>!(row.verified===true&&row.sha256===v.sha256&&row.bytes===v.bytes)))
+   .map(([path])=>path).sort();
+ const receiptEvidence=Object.freeze({
+   malformedCount,duplicatePaths:Object.freeze([...duplicates].sort()),
+   contradictoryPaths:Object.freeze([...contradictions].sort()),
+   undeclaredPaths:Object.freeze(undeclared),missingPaths:Object.freeze(missingReceipts),
+   mismatchedPaths:Object.freeze(mismatched),
+ });
+ const exactInventory=malformedCount===0&&duplicates.size===0&&undeclared.length===0
+   &&missingReceipts.length===0&&receipts.length===files.length;
+ const artifactsVerified=valid&&exactInventory&&mismatched.length===0;
+ // A claimed publication cannot have been independently observed before
+ // the claimed release instant, regardless of any supplied verified flags.
+ const releaseChronology=!isObj(publicReceipt)?"unobserved"
+   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(publicReceipt.observedAt)?"unqualified"
+   :Date.parse(publicReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
+ const publicFields=manifest.status==="published"&&https(manifest.canonical_public_url)&&qualifiedInstant(manifest.released_at);
+ const releaseReceived=!!(artifactsVerified&&publicFields&&releaseChronology==="ordered"
+   &&publicReceipt.verified===true&&publicReceipt.publicUrl===manifest.canonical_public_url
+   &&publicReceipt.version===manifest.version&&hash.test(publicReceipt.manifestSha256??""));
  const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiReceipt)&&doiReceipt.verified===true&&doiReceipt.doi===manifest.doi&&doiReceipt.version===manifest.version&&doiReceipt.publicUrl===manifest.canonical_public_url);
  const status=!valid?"invalid-candidate":!artifactsVerified?"metadata-ready-artifacts-unverified":manifest.status!=="published"?"reproducible-candidate-not-public":!releaseReceived?"public-claim-unreceived":doiReceived?"doi-received":"public-release-received";
- return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null});
+ return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null,receiptEvidence,releaseChronology});
 }
 
 /** Structural study-to-replay evidence assay. It cannot authenticate providers, execute
@@ -40,7 +77,7 @@ export function assessResearchPublicationReadiness({manifest,artifactReceipts=[]
 export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=null,independentReceipt=null,registrationReceipt=null}={}){
  const failures=[];
  const required=(name,ok)=>{if(!ok)failures.push(name);return ok};
- const timed=x=>has(x)&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u.test(x)&&Number.isFinite(Date.parse(x));
+ const timed=qualifiedInstant;
  const digested=x=>typeof x==="string"&&hash.test(x);
  const list=x=>Array.isArray(x)&&x.length>0&&x.every(has)&&new Set(x).size===x.length;
  const result=(status,flags,more={})=>Object.freeze({kind:"open-science-simulation-evidence/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...more,limit:"Checks supplied records for source, chronology and receipt consistency only. No provider authentication, simulation execution, scientific inference, rights clearance, external preregistration, or public release is performed."});

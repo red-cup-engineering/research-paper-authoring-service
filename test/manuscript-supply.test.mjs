@@ -69,6 +69,37 @@ test("original formal draft shape is unchanged, and author supplied evidence is 
   }), /unsupported authored section/u);
 });
 
+test("manuscript counts admit only owned, snapshotted source-authored section bodies", () => {
+  const inherited = Object.fromEntries(researchPaperProfiles.formal.map(({ id }) => [
+    id, "This text exists only on an input prototype, not in the authored section carrier.",
+  ]));
+  const supplied = Object.create(inherited);
+  supplied.abstract = "The original source owns exactly this section.";
+  const candidate = paper("owned-section", "claim-with-one-authored-section");
+  candidate.draft.sectionBodies = supplied;
+  const planned = planResearchPaperDraft(candidate.draft);
+  assert.equal(planned.sections.find(s => s.id === "abstract").body, supplied.abstract);
+  assert.equal(planned.sections.find(s => s.id === "lemma").body, "");
+  const inventory = planResearchManuscriptSupply({ papers: [candidate] });
+  assert.equal(inventory.counts.partialDrafts, 1);
+  assert.equal(inventory.counts.fullTextUnreviewed, 0,
+    "inherited text must never turn a partial draft into a full-text manuscript");
+
+  let reads = 0;
+  const accessorInput = {};
+  Object.defineProperty(accessorInput, "abstract", {
+    enumerable: true,
+    get() { return ++reads === 1 ? "Originally submitted section" : "Changed after validation"; },
+  });
+  const captured = planResearchPaperDraft({
+    id: "accessor-once", title: "Source snapshot", createdOn: "2026-10-23",
+    sectionBodies: accessorInput,
+  });
+  assert.equal(reads, 1, "source body is read once during admission");
+  assert.equal(captured.sections.find(s => s.id === "abstract").body, "Originally submitted section");
+  assert.equal(captured.sections.find(s => s.id === "lemma").body, "");
+});
+
 test("empirical, interpretive and methods work is not rejected for missing a formal lemma", () => {
   for (const profile of ["empirical", "interpretive", "methods"]) {
     const authored = planResearchPaperDraft({

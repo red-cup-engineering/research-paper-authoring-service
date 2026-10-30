@@ -54,11 +54,15 @@ function sectionText(provided, structure) {
   if (provided === null || typeof provided !== "object" || Array.isArray(provided))
     throw new TypeError("sectionBodies must be a record of authored text by section id");
   const allowed = new Set(structure.map(({ id }) => id));
+  // Capture only authored own entries once. Inherited sections and later
+  // changes to accessor-backed inputs cannot become manuscript content.
+  const ownBodies = Object.create(null);
   for (const [id, text] of Object.entries(provided)) {
     if (!allowed.has(id)) throw new TypeError(`unsupported authored section ${id}`);
     if (typeof text !== "string") throw new TypeError(`authored section ${id} must be text`);
+    ownBodies[id] = text;
   }
-  return provided;
+  return freeze(ownBodies);
 }
 
 function date(value, name) {

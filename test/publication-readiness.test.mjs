@@ -192,7 +192,7 @@ test("publication: malformed, oversized, missing or invalid UTF-8 source refuses
  }
 });
 test("publication: reserialized JSON whitespace is allowed but its exact digest must be used",()=>{
- const m=published(),manifestBytes=Buffer.from(JSON.stringify(m,null,2)+"\\n","utf8");
+ const m=published(),manifestBytes=Buffer.from(JSON.stringify(m,null,2)+"\n","utf8");
  const correct={...publicReceipt,manifestSha256:createHash("sha256").update(manifestBytes).digest("hex")};
  const r=check({manifest:m,artifactReceipts:receipt,manifestBytes,publicReceipt:correct});
  assert.equal(r.status,"public-release-received");

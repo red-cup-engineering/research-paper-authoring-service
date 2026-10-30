@@ -75,7 +75,7 @@ export function planResearchManuscriptSupply({ papers = [], windows = [] } = {})
       ? Object.freeze([]) : refs(item.intendedOutlets, "intended outlets");
     const completeness = grade(plan.sections);
     return Object.freeze({
-      id, plan, profile: draft.profile ?? "formal",
+      id, plan, profile: plan.profile ?? "formal",
       source: Object.freeze({ locator: sourceLocator, revision: sourceRevision }),
       primaryContribution: Object.freeze({ id: primaryClaimId, declaredStatus: claimStatus }),
       evidenceRefs, comparisonRefs, intendedOutlets,

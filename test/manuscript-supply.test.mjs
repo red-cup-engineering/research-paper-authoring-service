@@ -80,7 +80,7 @@ test("manuscript counts admit only owned, snapshotted source-authored section bo
   const planned = planResearchPaperDraft(candidate.draft);
   assert.equal(planned.sections.find(s => s.id === "abstract").body, supplied.abstract);
   assert.equal(planned.sections.find(s => s.id === "lemma").body, "");
-  const inventory = planResearchManuscriptSupply({ papers: [candidate] });
+  const inventory = planResearchManuscriptSupply({ papers: [candidate], windows: windows() });
   assert.equal(inventory.counts.partialDrafts, 1);
   assert.equal(inventory.counts.fullTextUnreviewed, 0,
     "inherited text must never turn a partial draft into a full-text manuscript");

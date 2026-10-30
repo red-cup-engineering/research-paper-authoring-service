@@ -100,6 +100,24 @@ test("manuscript counts admit only owned, snapshotted source-authored section bo
   assert.equal(captured.sections.find(s => s.id === "lemma").body, "");
 });
 
+test("manuscript profile and outlet eligibility come from one admitted authored plan", () => {
+  const candidate = paper("profile-source", "profile-type-consistency", { outlets: ["science-site"] });
+  let reads = 0;
+  Object.defineProperty(candidate.draft, "profile", {
+    enumerable: true,
+    get() { return ++reads === 1 ? "formal" : "interpretive"; },
+  });
+  const onlyInterpretive = windows().map(w =>
+    w.id === "science-site" ? { ...w, profiles: ["interpretive"] } : w);
+  const supplied = planResearchManuscriptSupply({ papers: [candidate], windows: onlyInterpretive });
+  const manuscript = supplied.manuscripts[0];
+  assert.equal(reads, 1, "admit a paper profile only once, not again after constructing its sections");
+  assert.equal(manuscript.profile, "formal", "reported profile must equal the source plan's chosen form");
+  assert.equal(manuscript.plan.sections.some(section => section.id === "lemma"), true);
+  assert.deepEqual(supplied.publicationWindows.find(w => w.id === "science-site").matchingManuscriptIds, [],
+    "a formal plan is not an interpretive manuscript merely because its input getter changes");
+});
+
 test("empirical, interpretive and methods work is not rejected for missing a formal lemma", () => {
   for (const profile of ["empirical", "interpretive", "methods"]) {
     const authored = planResearchPaperDraft({

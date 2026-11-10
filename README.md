@@ -88,3 +88,7 @@ const result = planResearchManuscriptSupply({
 The original `./publication-readiness` still distinguishes versioned byte-verification, actual publicly received release and DOI receipt. It is the **only existing meaning-side release-readiness assessor here**; the new manuscript supply library makes no duplicate public-release checker. The actual proof or experiment, editorial review, licensed source bundle, Open Research/RO-Crate metadata, Pandoc fabrication, Science Web release, and independently tested public receiver remain with their original Lenticule/Red Cup/Coesite/Causeway owners.
 
 Native tests cover several distinct fully authored candidate shapes against one publication slot, a different-valid source profile, an unfinished source, zero outlet capacity, duplicate-source refusal and absence of a release/DOI. Fixture text is deliberately labeled **not an original research result or a completed paper**. Use `npm test`; a passing suite proves only this pure authoring projection.
+
+## Acceptance
+
+Run `npm test` for the source suite. See the [API reference](docs/API.md) and [runnable consumer example](examples/quickstart.test.mjs).

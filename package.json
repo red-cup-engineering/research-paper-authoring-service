@@ -22,6 +22,7 @@
     "url": "https://github.com/561-group/.github/blob/main/TIPS.md"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:consumer": "node --test examples/quickstart.test.mjs"
   }
 }

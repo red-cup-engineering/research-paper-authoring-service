@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "basis": "Plan authored research manuscripts while preserving the distinction between supplied evidence and an empty section.",
+  "cases": [
+    {
+      "id": "RESEARCH-PAPER-AUTHORING-SERVICE-REFUSAL",
+      "role": "source",
+      "kind": "refusal",
+      "claim": "An unsupported authored section is refused.",
+      "file": "test/manuscript-supply.test.mjs",
+      "test": "original formal draft shape is unchanged, and author supplied evidence is copied, not synthesized"
+    },
+    {
+      "id": "RESEARCH-PAPER-AUTHORING-SERVICE-QUICKSTART",
+      "role": "consumer",
+      "kind": "example",
+      "claim": "An installed caller provides an attributable abstract and leaves an unsupplied measurement section empty.",
+      "file": "examples/quickstart.test.mjs"
+    }
+  ]
+}

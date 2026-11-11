@@ -1,6 +1,6 @@
 {
   "name": "@red-cup-engineering/research-paper-authoring-service",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Research-paper draft planning and structural assessment, independent of Markdown parsing, filesystems, and publication.",
   "exports": {

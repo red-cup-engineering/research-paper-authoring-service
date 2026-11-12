@@ -63,10 +63,23 @@ test("original formal draft shape is unchanged, and author supplied evidence is 
     sectionBodies: { abstract: "A supplied, attributable abstract.", lemma: "A supplied conditional lemma." },
   });
   assert.equal(authored.sections.find(x => x.id === "abstract").body, "A supplied, attributable abstract.");
+  assert.equal(authored.frontmatter.abstract, authored.sections.find(x => x.id === "abstract").body);
   assert.equal(authored.sections.find(x => x.id === "measurement").body, "");
   assert.throws(() => planResearchPaperDraft({
     id: "bad", title: "Bad", createdOn: "2026-10-23", sectionBodies: { fakeResults: "invented" },
   }), /unsupported authored section/u);
+});
+
+test("draft plans preserve supplied bibliography entries and reject impossible calendar dates", () => {
+  const references = [{ id: "source:1", title: "The supplied source", type: "book" }];
+  const plan = planResearchPaperDraft({
+    id: "with-sources", title: "A sourced draft", createdOn: "2024-02-29", references,
+  });
+  references[0].title = "Changed after planning";
+  assert.equal(plan.frontmatter.references[0].title, "The supplied source");
+  assert.throws(() => planResearchPaperDraft({
+    id: "invalid-date", title: "Invalid date", createdOn: "2026-02-29",
+  }), /ISO calendar date/u);
 });
 
 test("manuscript counts admit only owned, snapshotted source-authored section bodies", () => {

@@ -66,19 +66,24 @@ function sectionText(provided, structure) {
 }
 
 function date(value, name) {
-  if (typeof value !== "string" || !ISO_DATE.test(value)) throw new TypeError(`${name} must be an ISO calendar date`);
+  if (typeof value !== "string" || !ISO_DATE.test(value) ||
+      new Date(value).toJSON()?.slice(0, 10) !== value) throw new TypeError(`${name} must be an ISO calendar date`);
   return value;
 }
 
-function metadata({ id, title, status = "draft", documentType = "paper", authors = [], topics = [], disciplines = [], keywords = [], createdOn, modifiedOn = createdOn }) {
+function metadata({ id, title, status = "draft", documentType = "paper", authors = [], topics = [], disciplines = [], keywords = [], createdOn, modifiedOn = createdOn, references }, abstract) {
   if (typeof id !== "string" || !IDENTIFIER.test(id)) throw new TypeError("id must be a lowercase hyphenated identifier");
   if (typeof title !== "string" || title.trim() === "") throw new TypeError("title must be a non-empty string");
   if (typeof status !== "string" || status.trim() === "") throw new TypeError("status must be a non-empty string");
   if (typeof documentType !== "string" || documentType.trim() === "") throw new TypeError("documentType must be a non-empty string");
+  if (references !== undefined && (references === null || typeof references !== "object"))
+    throw new TypeError("references must be a keyed bibliography or a reference item array");
   return freeze({
     id, title, status, document_type: documentType,
     date_created: date(createdOn, "createdOn"), date_modified: date(modifiedOn, "modifiedOn"),
     authors: strings(authors, "authors"), topics: strings(topics, "topics"), disciplines: strings(disciplines, "disciplines"), keywords: strings(keywords, "keywords"),
+    ...(abstract?.trim() ? { abstract } : {}),
+    ...(references === undefined ? {} : { references: structuredClone(references) }),
   });
 }
 
@@ -87,7 +92,7 @@ export function planResearchPaperDraft(options) {
   const { profile = "formal", sectionBodies = {} } = options ?? {};
   const structure = paperStructure(profile);
   const authored = sectionText(sectionBodies, structure);
-  const frontmatter = metadata(options ?? {});
+  const frontmatter = metadata(options ?? {}, authored.abstract);
   // A paper can be created from existing, source-qualified scientific writing.
   // We never generate a result, cite an unread source or call a blank outline a paper.
   const sections = structure.map(({ id, heading }) => freeze({

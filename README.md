@@ -91,4 +91,4 @@ Native tests cover several distinct fully authored candidate shapes against one 
 
 ## Acceptance
 
-Run `npm test` for the source suite. See the [API reference](docs/API.md) and [runnable consumer example](examples/quickstart.test.mjs).
+Run `npm test` for the source suite. See the [runnable consumer example](examples/quickstart.test.mjs).

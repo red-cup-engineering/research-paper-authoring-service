@@ -37,7 +37,7 @@ function examineManifestBytes(manifest,manifestBytes,claimedSha256){
 const outcome=(status,failures,flags,info={})=>Object.freeze({kind:"research-paper-release-readiness/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...info,limit:"Structural and receipt consistency only; not scientific truth, rights clearance, archiving, DOI registration, public availability, or newsroom delivery."});
 /** The caller supplies independently byte-verified artifact and live-release receipts.
  * No filesystem, network, signing, DOI allocation, or publication effect occurs here. */
-export function assessResearchPublicationReadiness({manifest,manifestBytes=null,artifactReceipts=[],publicReceipt=null,doiReceipt=null}={}){
+export function assessResearchPublicationReadiness({manifest,manifestBytes=null,artifactReceipts: artifactRecords=[],publicReceipt: publicRecord=null,doiReceipt: doiRecord=null}={}){
  const missing=[],required=(k,p)=>{if(!p)missing.push(k);return p};
  if(!isObj(manifest))return outcome("invalid-candidate",["manifest-required"],{sourceReady:false,artifactBytesVerified:false,releaseReceived:false,doiReceived:false});
  required("publication-kind",["lenticule.research-publication.v1","research-publication/v1"].includes(manifest.kind));
@@ -55,10 +55,10 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
  required("source-locators",Array.isArray(manifest.source_manuscripts)&&manifest.source_manuscripts.length>0&&manifest.source_manuscripts.every(https));
  // All receipts are original testimony. Never discard an inconsistent receipt
  // by Map last-write-wins or certify a publication from input ordering.
- const valid=missing.length===0,receipts=Array.isArray(artifactReceipts)?artifactReceipts:[];
+ const valid=missing.length===0,records=Array.isArray(artifactRecords)?artifactRecords:[];
  const byPath=new Map(),rowsByPath=new Map(),duplicates=new Set(),contradictions=new Set();
  let malformedCount=0;
- for(const row of receipts){
+ for(const row of records){
    if(!isObj(row)||!has(row.path)){malformedCount++;continue}
    if(!rowsByPath.has(row.path))rowsByPath.set(row.path,[]);
    rowsByPath.get(row.path).push(row);
@@ -71,40 +71,40 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
  }
  const fileNames=new Set(files.map(([path])=>path));
  const undeclared=[...byPath.keys()].filter(path=>!fileNames.has(path)).sort();
- const missingReceipts=files.map(([path])=>path).filter(path=>!byPath.has(path)).sort();
+ const missingRecords=files.map(([path])=>path).filter(path=>!byPath.has(path)).sort();
  const mismatched=files.filter(([path,v])=>(rowsByPath.get(path)??[])
    .some(row=>!(row.verified===true&&row.sha256===v.sha256&&row.bytes===v.bytes)))
    .map(([path])=>path).sort();
- const receiptEvidence=Object.freeze({
+ const recordEvidence=Object.freeze({
    malformedCount,duplicatePaths:Object.freeze([...duplicates].sort()),
    contradictoryPaths:Object.freeze([...contradictions].sort()),
-   undeclaredPaths:Object.freeze(undeclared),missingPaths:Object.freeze(missingReceipts),
+   undeclaredPaths:Object.freeze(undeclared),missingPaths:Object.freeze(missingRecords),
    mismatchedPaths:Object.freeze(mismatched),
  });
  const exactInventory=malformedCount===0&&duplicates.size===0&&undeclared.length===0
-   &&missingReceipts.length===0&&receipts.length===files.length;
+   &&missingRecords.length===0&&records.length===files.length;
  const artifactsVerified=valid&&exactInventory&&mismatched.length===0;
  // A claimed publication cannot have been independently observed before
  // the claimed release instant, regardless of any supplied verified flags.
- const manifestEvidence=examineManifestBytes(manifest,manifestBytes,publicReceipt?.manifestSha256);
- const releaseChronology=!isObj(publicReceipt)?"unobserved"
-   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(publicReceipt.observedAt)?"unqualified"
-   :Date.parse(publicReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
+ const manifestEvidence=examineManifestBytes(manifest,manifestBytes,publicRecord?.manifestSha256);
+ const releaseChronology=!isObj(publicRecord)?"unobserved"
+   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(publicRecord.observedAt)?"unqualified"
+   :Date.parse(publicRecord.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
  const publicFields=manifest.status==="published"&&https(manifest.canonical_public_url)&&qualifiedInstant(manifest.released_at);
  const releaseReceived=!!(artifactsVerified&&publicFields&&releaseChronology==="ordered"
    &&manifestEvidence.standing==="bound"
-   &&publicReceipt.verified===true&&publicReceipt.publicUrl===manifest.canonical_public_url
-   &&publicReceipt.version===manifest.version&&hash.test(publicReceipt.manifestSha256??""));
- const doiChronology=!isObj(doiReceipt)?"unobserved"
-   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(doiReceipt.observedAt)?"unqualified"
-   :Date.parse(doiReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
- const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiReceipt)
-   &&doiChronology==="ordered"&&doiReceipt.verified===true
-   &&doiReceipt.doi===manifest.doi&&doiReceipt.version===manifest.version
-   &&doiReceipt.publicUrl===manifest.canonical_public_url
-   &&doiReceipt.manifestSha256===manifestEvidence.sha256);
+   &&publicRecord.verified===true&&publicRecord.publicUrl===manifest.canonical_public_url
+   &&publicRecord.version===manifest.version&&hash.test(publicRecord.manifestSha256??""));
+ const doiChronology=!isObj(doiRecord)?"unobserved"
+   :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(doiRecord.observedAt)?"unqualified"
+   :Date.parse(doiRecord.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
+ const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiRecord)
+   &&doiChronology==="ordered"&&doiRecord.verified===true
+   &&doiRecord.doi===manifest.doi&&doiRecord.version===manifest.version
+   &&doiRecord.publicUrl===manifest.canonical_public_url
+   &&doiRecord.manifestSha256===manifestEvidence.sha256);
  const status=!valid?"invalid-candidate":!artifactsVerified?"metadata-ready-artifacts-unverified":manifest.status!=="published"?"reproducible-candidate-not-public":!releaseReceived?"public-claim-unreceived":doiReceived?"doi-received":"public-release-received";
- return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null,receiptEvidence,manifestEvidence,releaseChronology,doiChronology});
+ return outcome(status,missing,{sourceReady:valid,artifactBytesVerified:artifactsVerified,releaseReceived,doiReceived,publiclyCitable:releaseReceived},{version:manifest.version??null,publicUrl:releaseReceived?manifest.canonical_public_url:null,doi:doiReceived?manifest.doi:null,receiptEvidence: recordEvidence,manifestEvidence,releaseChronology,doiChronology});
 }
 
 /** Structural study-to-replay evidence assay. It cannot authenticate providers, execute
@@ -114,7 +114,7 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
  * their own scientifically appropriate admissions rather than fake treatment arms.
  * Supplied freeze, run, and independent receipts must be authenticated by the caller.
  */
-export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=null,independentReceipt=null,registrationReceipt=null}={}){
+export function assessProspectiveSimulationEvidence({plan,freezeReceipts: freezeRecords=[],run=null,independentReceipt: independentRecord=null,registrationReceipt: registrationRecord=null}={}){
  const failures=[];
  const required=(name,ok)=>{if(!ok)failures.push(name);return ok};
  const timed=qualifiedInstant;
@@ -140,7 +140,7 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  required("negative-controls",list(design.negativeControls));
  required("rights-and-availability",["public","restricted","metadata-only"].includes(rights.access)&&has(rights.authority)&&has(rights.rationale));
  const designQualified=failures.length===0;
- const freezes=Array.isArray(freezeReceipts)?freezeReceipts:[];
+ const freezes=Array.isArray(freezeRecords)?freezeRecords:[];
  const frozen=(kind,sha)=>freezes.filter(r=>r?.kind===kind&&r.verified===true&&r.sha256===sha&&timed(r.observedAt));
  const protocolFreeze=frozen("study-protocol",protocol.sha256)[0],analysisFreeze=frozen("analysis-plan",analysis.sha256)[0];
  const planFrozen=designQualified&&!!protocolFreeze&&!!analysisFreeze;
@@ -153,22 +153,22 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const allocationsValid=arms.length>=2&&Object.keys(alloc).length===arms.length&&arms.every(k=>Object.hasOwn(alloc,k)&&number(alloc[k])&&alloc[k]>0)&&arms.reduce((sum,k)=>sum+alloc[k],0)===assigned;
  // An aggregate denominator can conceal systematic loss of one assigned colony arm.
  // All counts are observations supplied by the host, not verified experiments.
- const dispositionFields=["assignedUnits","completedUnits","failedUnits","abortedUnits"];
+ const decisionFields=["assignedUnits","completedUnits","failedUnits","abortedUnits"];
  const perArmValid=!!(countsValid&&allocationsValid&&Object.keys(byArm).length===arms.length
    &&arms.every(k=>Object.hasOwn(byArm,k)&&isObj(byArm[k])
-     &&dispositionFields.every(f=>Object.hasOwn(byArm[k],f)&&number(byArm[k][f]))
+     &&decisionFields.every(f=>Object.hasOwn(byArm[k],f)&&number(byArm[k][f]))
      &&byArm[k].assignedUnits===alloc[k]
      &&byArm[k].completedUnits+byArm[k].failedUnits+byArm[k].abortedUnits===byArm[k].assignedUnits)
-   &&dispositionFields.every(f=>arms.reduce((sum,k)=>sum+byArm[k][f],0)===ct[f]));
- const acceptedByArm=perArmValid?Object.freeze(Object.fromEntries(arms.map(k=>[k,Object.freeze(Object.fromEntries(dispositionFields.map(field=>[field,byArm[k][field]])))]))):null;
+   &&decisionFields.every(f=>arms.reduce((sum,k)=>sum+byArm[k][f],0)===ct[f]));
+ const acceptedByArm=perArmValid?Object.freeze(Object.fromEntries(arms.map(k=>[k,Object.freeze(Object.fromEntries(decisionFields.map(field=>[field,byArm[k][field]])))]))):null;
  const runRecorded=designQualified&&!!runObj&&has(runObj.runId)&&has(runObj.producer)&&has(runObj.softwareRevision)&&digested(runObj.traceSha256)&&digested(runObj.resultsSha256)&&digested(runObj.dataSha256)&&digested(runObj.codeSha256)&&runObj.protocolSha256===protocol.sha256&&runObj.analysisSha256===analysis.sha256&&timed(runObj.startedAt)&&timed(runObj.completedAt)&&Date.parse(runObj.startedAt)<Date.parse(runObj.completedAt)&&countsValid&&allocationsValid&&perArmValid;
  const prospective=!!(planFrozen&&runRecorded&&Date.parse(protocolFreeze.observedAt)<=Date.parse(runObj.startedAt)&&Date.parse(analysisFreeze.observedAt)<=Date.parse(runObj.startedAt));
  const controlRows=Array.isArray(runObj?.controls)?runObj.controls:[];
  const controlsComplete=runRecorded&&list(design.negativeControls)&&design.negativeControls.every(id=>controlRows.filter(r=>r?.id===id&&["passed","failed","unassayed"].includes(r.disposition)&&digested(r.traceSha256)).length===1)&&controlRows.length===design.negativeControls.length;
  const controlsAssayed=!!(controlsComplete&&controlRows.every(r=>r.disposition!=="unassayed"));
  const controlsPassed=!!(controlsAssayed&&controlRows.every(r=>r.disposition==="passed"));
- const independentReplay=!!(prospective&&controlsPassed&&isObj(independentReceipt)&&independentReceipt.verified===true&&has(independentReceipt.receiver)&&independentReceipt.receiver!==runObj.producer&&independentReceipt.runId===runObj.runId&&independentReceipt.traceSha256===runObj.traceSha256&&independentReceipt.resultsSha256===runObj.resultsSha256&&independentReceipt.protocolSha256===protocol.sha256&&independentReceipt.analysisSha256===analysis.sha256&&independentReceipt.replayOutcome==="matched"&&Number.isSafeInteger(independentReceipt.replayedUnits)&&independentReceipt.replayedUnits>0&&independentReceipt.controlsReviewed===true&&timed(independentReceipt.observedAt)&&Date.parse(independentReceipt.observedAt)>=Date.parse(runObj.completedAt));
- const externalRegistration=!!(planFrozen&&isObj(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt))));
+ const independentReplay=!!(prospective&&controlsPassed&&isObj(independentRecord)&&independentRecord.verified===true&&has(independentRecord.receiver)&&independentRecord.receiver!==runObj.producer&&independentRecord.runId===runObj.runId&&independentRecord.traceSha256===runObj.traceSha256&&independentRecord.resultsSha256===runObj.resultsSha256&&independentRecord.protocolSha256===protocol.sha256&&independentRecord.analysisSha256===analysis.sha256&&independentRecord.replayOutcome==="matched"&&Number.isSafeInteger(independentRecord.replayedUnits)&&independentRecord.replayedUnits>0&&independentRecord.controlsReviewed===true&&timed(independentRecord.observedAt)&&Date.parse(independentRecord.observedAt)>=Date.parse(runObj.completedAt));
+ const externalRegistration=!!(planFrozen&&isObj(registrationRecord)&&registrationRecord.verified===true&&https(registrationRecord.url)&&timed(registrationRecord.observedAt)&&registrationRecord.protocolSha256===protocol.sha256&&registrationRecord.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationRecord.observedAt)<=Date.parse(runObj.startedAt))));
  if(designQualified&&!planFrozen)failures.push("independent-protocol-and-analysis-freeze-receipts");
  if(designQualified&&run!==null&&!perArmValid)failures.push("per-arm-disposition-missing-or-inconsistent");
  if(designQualified&&run!==null&&!runRecorded)failures.push("run-provenance-denominator-or-treatment-coverage");

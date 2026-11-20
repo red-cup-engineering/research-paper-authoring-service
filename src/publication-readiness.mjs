@@ -1,7 +1,8 @@
+import { isRecord } from "@red-cup-engineering/signcell/values";
 /** Read-only structural admission; a citation file cannot itself create a release or DOI. */
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-const isObj=x=>x!==null&&typeof x==="object"&&!Array.isArray(x),has=x=>typeof x==="string"&&x.trim().length>0;
+const has=x=>typeof x==="string"&&x.trim().length>0;
 const hash=/^[a-f0-9]{64}$/u,ver=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w.-]+)?$/u,doi=/^10\.\d{4,9}\/\S+$/iu;
 const https=x=>{if(!has(x))return false;try{const u=new URL(x);return u.protocol==="https:"&&!u.username&&!u.password&&!!u.hostname}catch{return false}};
 const qualifiedInstant=x=>{
@@ -39,19 +40,19 @@ const outcome=(status,failures,flags,info={})=>Object.freeze({kind:"research-pap
  * No filesystem, network, signing, DOI allocation, or publication effect occurs here. */
 export function assessResearchPublicationReadiness({manifest,manifestBytes=null,artifactReceipts=[],publicReceipt=null,doiReceipt=null}={}){
  const missing=[],required=(k,p)=>{if(!p)missing.push(k);return p};
- if(!isObj(manifest))return outcome("invalid-candidate",["manifest-required"],{sourceReady:false,artifactBytesVerified:false,releaseReceived:false,doiReceived:false});
+ if(!isRecord(manifest))return outcome("invalid-candidate",["manifest-required"],{sourceReady:false,artifactBytesVerified:false,releaseReceived:false,doiReceived:false});
  required("publication-kind",["lenticule.research-publication.v1","research-publication/v1"].includes(manifest.kind));
  required("title",has(manifest.title));required("version",has(manifest.version)&&ver.test(manifest.version));
  required("status",["draft","release-candidate","published"].includes(manifest.status));
  required("discipline",has(manifest.discipline));required("publisher",has(manifest.publishing_organization));
  const authors=Array.isArray(manifest.authors)?manifest.authors:[];
- required("authors",authors.length>0&&authors.every(x=>isObj(x)&&has(x.name)&&has(x.role))&&new Set(authors.map(x=>x.name)).size===authors.length);
+ required("authors",authors.length>0&&authors.every(x=>isRecord(x)&&has(x.name)&&has(x.role))&&new Set(authors.map(x=>x.name)).size===authors.length);
  required("human-accountability",authors.some(x=>/human|accountable/iu.test(x.role??"")&&!/\bai\b|model/iu.test(x.role??"")));
  const ai=authors.some(x=>/\bai\b|model|codex|gpt/iu.test(x.role??""));
  required("ai-contribution-disclosure",!ai||(has(manifest.ai_disclosure)&&/ai|model|assistant/iu.test(manifest.ai_disclosure)));
- required("hypotheses-and-evidence-status",isObj(manifest.evidence)&&Object.keys(manifest.evidence).length>0&&Object.values(manifest.evidence).every(has));
- const files=isObj(manifest.files)?Object.entries(manifest.files):[];
- required("declared-artifacts",files.some(([p])=>/\.pdf$/iu.test(p))&&files.every(([p,v])=>has(p)&&!p.startsWith("/")&&!p.split("/").includes("..")&&isObj(v)&&hash.test(v.sha256??"")&&Number.isSafeInteger(v.bytes)&&v.bytes>0));
+ required("hypotheses-and-evidence-status",isRecord(manifest.evidence)&&Object.keys(manifest.evidence).length>0&&Object.values(manifest.evidence).every(has));
+ const files=isRecord(manifest.files)?Object.entries(manifest.files):[];
+ required("declared-artifacts",files.some(([p])=>/\.pdf$/iu.test(p))&&files.every(([p,v])=>has(p)&&!p.startsWith("/")&&!p.split("/").includes("..")&&isRecord(v)&&hash.test(v.sha256??"")&&Number.isSafeInteger(v.bytes)&&v.bytes>0));
  required("source-locators",Array.isArray(manifest.source_manuscripts)&&manifest.source_manuscripts.length>0&&manifest.source_manuscripts.every(https));
  // All receipts are original testimony. Never discard an inconsistent receipt
  // by Map last-write-wins or certify a publication from input ordering.
@@ -59,7 +60,7 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
  const byPath=new Map(),rowsByPath=new Map(),duplicates=new Set(),contradictions=new Set();
  let malformedCount=0;
  for(const row of receipts){
-   if(!isObj(row)||!has(row.path)){malformedCount++;continue}
+   if(!isRecord(row)||!has(row.path)){malformedCount++;continue}
    if(!rowsByPath.has(row.path))rowsByPath.set(row.path,[]);
    rowsByPath.get(row.path).push(row);
    if(byPath.has(row.path)){
@@ -87,7 +88,7 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
  // A claimed publication cannot have been independently observed before
  // the claimed release instant, regardless of any supplied verified flags.
  const manifestEvidence=examineManifestBytes(manifest,manifestBytes,publicReceipt?.manifestSha256);
- const releaseChronology=!isObj(publicReceipt)?"unobserved"
+ const releaseChronology=!isRecord(publicReceipt)?"unobserved"
    :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(publicReceipt.observedAt)?"unqualified"
    :Date.parse(publicReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
  const publicFields=manifest.status==="published"&&https(manifest.canonical_public_url)&&qualifiedInstant(manifest.released_at);
@@ -95,10 +96,10 @@ export function assessResearchPublicationReadiness({manifest,manifestBytes=null,
    &&manifestEvidence.standing==="bound"
    &&publicReceipt.verified===true&&publicReceipt.publicUrl===manifest.canonical_public_url
    &&publicReceipt.version===manifest.version&&hash.test(publicReceipt.manifestSha256??""));
- const doiChronology=!isObj(doiReceipt)?"unobserved"
+ const doiChronology=!isRecord(doiReceipt)?"unobserved"
    :!qualifiedInstant(manifest.released_at)||!qualifiedInstant(doiReceipt.observedAt)?"unqualified"
    :Date.parse(doiReceipt.observedAt)<Date.parse(manifest.released_at)?"pre-release-observation":"ordered";
- const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isObj(doiReceipt)
+ const doiReceived=!!(releaseReceived&&has(manifest.doi)&&doi.test(manifest.doi)&&isRecord(doiReceipt)
    &&doiChronology==="ordered"&&doiReceipt.verified===true
    &&doiReceipt.doi===manifest.doi&&doiReceipt.version===manifest.version
    &&doiReceipt.publicUrl===manifest.canonical_public_url
@@ -121,12 +122,12 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const digested=x=>typeof x==="string"&&hash.test(x);
  const list=x=>Array.isArray(x)&&x.length>0&&x.every(has)&&new Set(x).size===x.length;
  const result=(status,flags,more={})=>Object.freeze({kind:"open-science-simulation-evidence/v1",status,failures:Object.freeze([...failures]),flags:Object.freeze({...flags}),...more,limit:"Checks supplied records for source, chronology and receipt consistency only. No provider authentication, simulation execution, scientific inference, rights clearance, external preregistration, or public release is performed."});
- if(!isObj(plan))return result("invalid-plan",{designQualified:false,planFrozen:false,prospective:false,runRecorded:false,controlsPassed:false,independentReplay:false,externalRegistration:false});
+ if(!isRecord(plan))return result("invalid-plan",{designQualified:false,planFrozen:false,prospective:false,runRecorded:false,controlsPassed:false,independentReplay:false,externalRegistration:false});
  required("study-kind",plan.kind==="lenticule.open-science-study/v1");
  required("source-work",https(plan.sourceWork));
  required("science-owner",has(plan.scienceOwner));
  required("study-method",plan.method==="confirmatory-simulation");
- const protocol=isObj(plan.protocol)?plan.protocol:{},analysis=isObj(plan.analysisPlan)?plan.analysisPlan:{},design=isObj(plan.design)?plan.design:{},rights=isObj(plan.rights)?plan.rights:{};
+ const protocol=isRecord(plan.protocol)?plan.protocol:{},analysis=isRecord(plan.analysisPlan)?plan.analysisPlan:{},design=isRecord(plan.design)?plan.design:{},rights=isRecord(plan.rights)?plan.rights:{};
  required("protocol-source",https(protocol.url)&&digested(protocol.sha256));
  required("analysis-plan-source",https(analysis.url)&&digested(analysis.sha256));
  required("assignment-unit",has(design.assignmentUnit));
@@ -144,8 +145,8 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const frozen=(kind,sha)=>freezes.filter(r=>r?.kind===kind&&r.verified===true&&r.sha256===sha&&timed(r.observedAt));
  const protocolFreeze=frozen("study-protocol",protocol.sha256)[0],analysisFreeze=frozen("analysis-plan",analysis.sha256)[0];
  const planFrozen=designQualified&&!!protocolFreeze&&!!analysisFreeze;
- const runObj=isObj(run)?run:null,ct=isObj(runObj?.counts)?runObj.counts:{},alloc=isObj(runObj?.allocatedArms)?runObj.allocatedArms:{};
- const byArm=isObj(runObj?.dispositionByArm)?runObj.dispositionByArm:{};
+ const runObj=isRecord(run)?run:null,ct=isRecord(runObj?.counts)?runObj.counts:{},alloc=isRecord(runObj?.allocatedArms)?runObj.allocatedArms:{};
+ const byArm=isRecord(runObj?.dispositionByArm)?runObj.dispositionByArm:{};
  const number=x=>Number.isSafeInteger(x)&&x>=0;
  const assigned=ct.assignedUnits,completed=ct.completedUnits,failed=ct.failedUnits,aborted=ct.abortedUnits;
  const arms=Array.isArray(design.treatmentArms)?design.treatmentArms:[];
@@ -155,7 +156,7 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  // All counts are observations supplied by the host, not verified experiments.
  const dispositionFields=["assignedUnits","completedUnits","failedUnits","abortedUnits"];
  const perArmValid=!!(countsValid&&allocationsValid&&Object.keys(byArm).length===arms.length
-   &&arms.every(k=>Object.hasOwn(byArm,k)&&isObj(byArm[k])
+   &&arms.every(k=>Object.hasOwn(byArm,k)&&isRecord(byArm[k])
      &&dispositionFields.every(f=>Object.hasOwn(byArm[k],f)&&number(byArm[k][f]))
      &&byArm[k].assignedUnits===alloc[k]
      &&byArm[k].completedUnits+byArm[k].failedUnits+byArm[k].abortedUnits===byArm[k].assignedUnits)
@@ -167,8 +168,8 @@ export function assessProspectiveSimulationEvidence({plan,freezeReceipts=[],run=
  const controlsComplete=runRecorded&&list(design.negativeControls)&&design.negativeControls.every(id=>controlRows.filter(r=>r?.id===id&&["passed","failed","unassayed"].includes(r.disposition)&&digested(r.traceSha256)).length===1)&&controlRows.length===design.negativeControls.length;
  const controlsAssayed=!!(controlsComplete&&controlRows.every(r=>r.disposition!=="unassayed"));
  const controlsPassed=!!(controlsAssayed&&controlRows.every(r=>r.disposition==="passed"));
- const independentReplay=!!(prospective&&controlsPassed&&isObj(independentReceipt)&&independentReceipt.verified===true&&has(independentReceipt.receiver)&&independentReceipt.receiver!==runObj.producer&&independentReceipt.runId===runObj.runId&&independentReceipt.traceSha256===runObj.traceSha256&&independentReceipt.resultsSha256===runObj.resultsSha256&&independentReceipt.protocolSha256===protocol.sha256&&independentReceipt.analysisSha256===analysis.sha256&&independentReceipt.replayOutcome==="matched"&&Number.isSafeInteger(independentReceipt.replayedUnits)&&independentReceipt.replayedUnits>0&&independentReceipt.controlsReviewed===true&&timed(independentReceipt.observedAt)&&Date.parse(independentReceipt.observedAt)>=Date.parse(runObj.completedAt));
- const externalRegistration=!!(planFrozen&&isObj(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt))));
+ const independentReplay=!!(prospective&&controlsPassed&&isRecord(independentReceipt)&&independentReceipt.verified===true&&has(independentReceipt.receiver)&&independentReceipt.receiver!==runObj.producer&&independentReceipt.runId===runObj.runId&&independentReceipt.traceSha256===runObj.traceSha256&&independentReceipt.resultsSha256===runObj.resultsSha256&&independentReceipt.protocolSha256===protocol.sha256&&independentReceipt.analysisSha256===analysis.sha256&&independentReceipt.replayOutcome==="matched"&&Number.isSafeInteger(independentReceipt.replayedUnits)&&independentReceipt.replayedUnits>0&&independentReceipt.controlsReviewed===true&&timed(independentReceipt.observedAt)&&Date.parse(independentReceipt.observedAt)>=Date.parse(runObj.completedAt));
+ const externalRegistration=!!(planFrozen&&isRecord(registrationReceipt)&&registrationReceipt.verified===true&&https(registrationReceipt.url)&&timed(registrationReceipt.observedAt)&&registrationReceipt.protocolSha256===protocol.sha256&&registrationReceipt.analysisSha256===analysis.sha256&&(!runObj||(timed(runObj.startedAt)&&Date.parse(registrationReceipt.observedAt)<=Date.parse(runObj.startedAt))));
  if(designQualified&&!planFrozen)failures.push("independent-protocol-and-analysis-freeze-receipts");
  if(designQualified&&run!==null&&!perArmValid)failures.push("per-arm-disposition-missing-or-inconsistent");
  if(designQualified&&run!==null&&!runRecorded)failures.push("run-provenance-denominator-or-treatment-coverage");

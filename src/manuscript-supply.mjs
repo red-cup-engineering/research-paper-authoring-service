@@ -1,3 +1,4 @@
+import { isRecord } from "@red-cup-engineering/signcell/values";
 /**
  * Paper supply, not submission scheduling. Keep an ample source-witnessed
  * manuscript inventory independently of each publication channel's capacity.
@@ -6,7 +7,7 @@
  */
 import { planResearchPaperDraft, researchPaperProfiles } from "./research-paper-authoring.mjs";
 
-const isRecord = x => x !== null && typeof x === "object" && !Array.isArray(x);
+
 const text = (x, label) => {
   if (typeof x !== "string" || !x.trim()) throw new TypeError(`${label} must be nonempty text`);
   return x;

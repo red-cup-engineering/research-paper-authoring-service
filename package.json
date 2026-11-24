@@ -1,0 +1,27 @@
+{
+  "name": "@red-cup-engineering/research-paper-authoring-service",
+  "version": "0.1.3-dev.0",
+  "type": "module",
+  "description": "Research-paper draft planning and structural assessment, independent of Markdown parsing, filesystems, and publication.",
+  "exports": {
+    ".": "./src/research-paper-authoring.mjs",
+    "./publication-readiness": "./src/publication-readiness.mjs",
+    "./manuscript-supply": "./src/manuscript-supply.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/red-cup-engineering/research-paper-authoring-service.git"
+  },
+  "license": "MIT",
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/561-group/.github/blob/main/TIPS.md"
+  },
+  "dependencies": {
+    "@red-cup-engineering/signcell": "^0.18.0 || 0.18.1-dev.0"
+  }
+}

@@ -1,6 +1,6 @@
+import { sha256Hex } from "@red-cup-engineering/semiotic-content-address-system";
 import { isRecord } from "@red-cup-engineering/signcell/values";
 /** Read-only structural admission; a citation file cannot itself create a release or DOI. */
-import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 const has=x=>typeof x==="string"&&x.trim().length>0;
 const hash=/^[a-f0-9]{64}$/u,ver=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\w.-]+)?$/u,doi=/^10\.\d{4,9}\/\S+$/iu;
@@ -31,7 +31,7 @@ function examineManifestBytes(manifest,manifestBytes,claimedSha256){
  try{decoded=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(manifestBytes))}
  catch{return report("invalid-source-json-or-encoding")}
  if(!isDeepStrictEqual(decoded,manifest))return report("source-does-not-match-manifest");
- const sha256=createHash("sha256").update(manifestBytes).digest("hex");
+ const sha256=sha256Hex(manifestBytes);
  return report(hash.test(claimedSha256??"")&&sha256===claimedSha256?"bound":"receipt-digest-mismatch",
    sha256,manifestBytes.byteLength);
 }
